@@ -76,12 +76,12 @@ int main()
 
     // Groundtruth 
     {
-        std::vector<Vector3D> gt_points;
+        vector<Vector3D> gt_points;
         for(auto& p : gt_traj) 
             gt_points.emplace_back(p.t.x(), p.t.y(), p.t.z());
 
         LineStrip3D gt_strip(gt_points);
-        std::vector<LineStrip3D> gt_collection{gt_strip};
+        vector<LineStrip3D> gt_collection{gt_strip};
 
         rec.log("trajectory/groundtruth",
             LineStrips3D(gt_collection)
@@ -91,7 +91,7 @@ int main()
 
     // Estimated trajectory
     {
-        std::vector<Vector3D> est_points;
+        vector<Vector3D> est_points;
 
         for(size_t i = 0; i < est_traj.size(); ++i) 
         {
@@ -119,14 +119,14 @@ int main()
                     .with_colors({Color(0,0,255)})  // Blue
             );
 
-            this_thread::sleep_for(std::chrono::milliseconds(30)); 
+            this_thread::sleep_for(chrono::milliseconds(30)); 
         }
     }
 
     cout << "Rerun Viewer \n";
 
 
-    this_thread::sleep_for(std::chrono::seconds(2));
+    this_thread::sleep_for(chrono::seconds(2));
 
     return 0;
 }
