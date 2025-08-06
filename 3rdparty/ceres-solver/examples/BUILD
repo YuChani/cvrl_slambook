@@ -28,15 +28,17 @@
 #
 # Author: mierle@gmail.com (Keir Mierle)
 
-EXAMPLE_COPTS = [
-    # Needed to silence GFlags complaints.
-    "-Wno-sign-compare",
-]
+
 
 EXAMPLE_DEPS = [
     "//:ceres",
-    "@com_github_eigen_eigen//:eigen",
-    "@com_github_gflags_gflags//:gflags",
+    "@eigen//:eigen",
+    "@abseil-cpp//absl/log",
+    "@abseil-cpp//absl/flags:parse",
+    "@abseil-cpp//absl/flags:flag",
+    "@abseil-cpp//absl/time",
+    "@abseil-cpp//absl/log:check",
+    "@abseil-cpp//absl/log:initialize",
 ]
 
 cc_binary(
@@ -45,10 +47,8 @@ cc_binary(
         "bal_problem.cc",
         "bal_problem.h",
         "bundle_adjuster.cc",
-        "random.h",
         "snavely_reprojection_error.h",
     ],
-    copts = EXAMPLE_COPTS,
     deps = EXAMPLE_DEPS,
 )
 
@@ -60,33 +60,28 @@ cc_binary(
         "fields_of_experts.h",
         "pgm_image.h",
     ],
-    copts = EXAMPLE_COPTS,
     deps = EXAMPLE_DEPS,
 )
 
 cc_binary(
     name = "robot_pose_mle",
     srcs = [
-        "random.h",
         "robot_pose_mle.cc",
     ],
-    copts = EXAMPLE_COPTS,
     deps = EXAMPLE_DEPS,
 )
-
-SLAM_COPTS = EXAMPLE_COPTS + ["-Iexamples/slam"]
 
 cc_binary(
     name = "pose_graph_2d",
     srcs = [
         "slam/common/read_g2o.h",
-        "slam/pose_graph_2d/angle_local_parameterization.h",
+        "slam/pose_graph_2d/angle_manifold.h",
         "slam/pose_graph_2d/normalize_angle.h",
         "slam/pose_graph_2d/pose_graph_2d.cc",
         "slam/pose_graph_2d/pose_graph_2d_error_term.h",
         "slam/pose_graph_2d/types.h",
     ],
-    copts = SLAM_COPTS,
+    includes = ["slam"],
     deps = EXAMPLE_DEPS,
 )
 
@@ -98,14 +93,13 @@ cc_binary(
         "slam/pose_graph_3d/pose_graph_3d_error_term.h",
         "slam/pose_graph_3d/types.h",
     ],
-    copts = SLAM_COPTS,
+    includes = ["slam"],
     deps = EXAMPLE_DEPS,
 )
 
 [cc_binary(
     name = example,
     srcs = [example + ".cc"],
-    copts = EXAMPLE_COPTS,
     deps = EXAMPLE_DEPS,
 ) for example in [
     "circle_fit",

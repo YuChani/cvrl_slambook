@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -35,8 +35,9 @@
 #include <set>
 #include <unordered_map>
 #include <vector>
-#include "ceres/internal/port.h"
-#include "glog/logging.h"
+
+#include "absl/log/check.h"
+#include "ceres/internal/export.h"
 
 namespace ceres {
 
@@ -161,17 +162,13 @@ class OrderedGroups {
   // group for every integer.
   int GroupSize(const int group) const {
     auto it = group_to_elements_.find(group);
-    return (it ==  group_to_elements_.end()) ? 0 : it->second.size();
+    return (it == group_to_elements_.end()) ? 0 : it->second.size();
   }
 
-  int NumElements() const {
-    return element_to_group_.size();
-  }
+  int NumElements() const { return element_to_group_.size(); }
 
   // Number of groups with one or more elements.
-  int NumGroups() const {
-    return group_to_elements_.size();
-  }
+  int NumGroups() const { return group_to_elements_.size(); }
 
   // The first group with one or more elements. Calling this when
   // there are no groups with non-zero elements will result in a
@@ -185,9 +182,7 @@ class OrderedGroups {
     return group_to_elements_;
   }
 
-  const std::map<T, int>& element_to_group() const {
-    return element_to_group_;
-  }
+  const std::map<T, int>& element_to_group() const { return element_to_group_; }
 
  private:
   std::map<int, std::set<T>> group_to_elements_;
@@ -195,7 +190,7 @@ class OrderedGroups {
 };
 
 // Typedef for the most commonly used version of OrderedGroups.
-typedef OrderedGroups<double*> ParameterBlockOrdering;
+using ParameterBlockOrdering = OrderedGroups<double*>;
 
 }  // namespace ceres
 

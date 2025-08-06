@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -31,12 +31,14 @@
 #ifndef CERES_INTERNAL_TRUST_REGION_STRATEGY_H_
 #define CERES_INTERNAL_TRUST_REGION_STRATEGY_H_
 
+#include <memory>
 #include <string>
-#include "ceres/internal/port.h"
+
+#include "ceres/internal/disable_warnings.h"
+#include "ceres/internal/export.h"
 #include "ceres/linear_solver.h"
 
-namespace ceres {
-namespace internal {
+namespace ceres::internal {
 
 class LinearSolver;
 class SparseMatrix;
@@ -53,7 +55,7 @@ class SparseMatrix;
 // the LevenbergMarquardtStrategy uses the inverse of the trust region
 // radius to scale the damping term, which controls the step size, but
 // does not set a hard limit on its size.
-class TrustRegionStrategy {
+class CERES_NO_EXPORT TrustRegionStrategy {
  public:
   struct Options {
     TrustRegionStrategyType trust_region_strategy_type = LEVENBERG_MARQUARDT;
@@ -71,7 +73,15 @@ class TrustRegionStrategy {
 
     // Further specify which dogleg method to use
     DoglegType dogleg_type = TRADITIONAL_DOGLEG;
+
+    ContextImpl* context = nullptr;
+    int num_threads = 1;
   };
+
+  // Factory.
+  static std::unique_ptr<TrustRegionStrategy> Create(const Options& options);
+
+  virtual ~TrustRegionStrategy();
 
   // Per solve options.
   struct PerSolveOptions {
@@ -104,10 +114,9 @@ class TrustRegionStrategy {
     int num_iterations = -1;
 
     // Status of the linear solver used to solve the Newton system.
-    LinearSolverTerminationType termination_type = LINEAR_SOLVER_FAILURE;
+    LinearSolverTerminationType termination_type =
+        LinearSolverTerminationType::FAILURE;
   };
-
-  virtual ~TrustRegionStrategy();
 
   // Use the current radius to solve for the trust region step.
   virtual Summary ComputeStep(const PerSolveOptions& per_solve_options,
@@ -133,12 +142,10 @@ class TrustRegionStrategy {
 
   // Current trust region radius.
   virtual double Radius() const = 0;
-
-  // Factory.
-  static TrustRegionStrategy* Create(const Options& options);
 };
 
-}  // namespace internal
-}  // namespace ceres
+}  // namespace ceres::internal
+
+#include "ceres/internal/reenable_warnings.h"
 
 #endif  // CERES_INTERNAL_TRUST_REGION_STRATEGY_H_

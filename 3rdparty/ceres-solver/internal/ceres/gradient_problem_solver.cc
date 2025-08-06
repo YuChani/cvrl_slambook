@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -30,25 +30,28 @@
 
 #include "ceres/gradient_problem_solver.h"
 
+#include <map>
 #include <memory>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "ceres/callbacks.h"
 #include "ceres/gradient_problem.h"
 #include "ceres/gradient_problem_evaluator.h"
 #include "ceres/internal/eigen.h"
-#include "ceres/internal/port.h"
+#include "ceres/internal/export.h"
 #include "ceres/map_util.h"
 #include "ceres/minimizer.h"
 #include "ceres/solver.h"
 #include "ceres/solver_utils.h"
-#include "ceres/stringprintf.h"
 #include "ceres/types.h"
-#include "ceres/wall_time.h"
 
 namespace ceres {
-using internal::StringPrintf;
-using internal::StringAppendF;
-using std::string;
-
 namespace {
 
 Solver::Options GradientProblemSolverOptionsToSolverOptions(
@@ -83,7 +86,6 @@ Solver::Options GradientProblemSolverOptionsToSolverOptions(
 #undef COPY_OPTION
 }
 
-
 }  // namespace
 
 bool GradientProblemSolver::Options::IsValid(std::string* error) const {
@@ -92,8 +94,7 @@ bool GradientProblemSolver::Options::IsValid(std::string* error) const {
   return solver_options.IsValid(error);
 }
 
-GradientProblemSolver::~GradientProblemSolver() {
-}
+GradientProblemSolver::~GradientProblemSolver() = default;
 
 void GradientProblemSolver::Solve(const GradientProblemSolver::Options& options,
                                   const GradientProblem& problem,
@@ -105,19 +106,20 @@ void GradientProblemSolver::Solve(const GradientProblemSolver::Options& options,
   using internal::LoggingCallback;
   using internal::Minimizer;
   using internal::SetSummaryFinalCost;
-  using internal::WallTimeInSeconds;
 
-  double start_time = WallTimeInSeconds();
+  const absl::Time start_time = absl::Now();
 
   CHECK(summary != nullptr);
   *summary = Summary();
+  // clang-format off
   summary->num_parameters                    = problem.NumParameters();
-  summary->num_local_parameters              = problem.NumLocalParameters();
+  summary->num_tangent_parameters            = problem.NumTangentParameters();
   summary->line_search_direction_type        = options.line_search_direction_type;         //  NOLINT
   summary->line_search_interpolation_type    = options.line_search_interpolation_type;     //  NOLINT
   summary->line_search_type                  = options.line_search_type;
   summary->max_lbfgs_rank                    = options.max_lbfgs_rank;
   summary->nonlinear_conjugate_gradient_type = options.nonlinear_conjugate_gradient_type;  //  NOLINT
+  // clang-format on
 
   // Check validity
   if (!options.IsValid(&summary->message)) {
@@ -134,21 +136,22 @@ void GradientProblemSolver::Solve(const GradientProblemSolver::Options& options,
   // now.
   Minimizer::Options minimizer_options =
       Minimizer::Options(GradientProblemSolverOptionsToSolverOptions(options));
-  minimizer_options.evaluator.reset(new GradientProblemEvaluator(problem));
+  minimizer_options.evaluator =
+      std::make_unique<GradientProblemEvaluator>(problem);
 
   std::unique_ptr<IterationCallback> logging_callback;
   if (options.logging_type != SILENT) {
-    logging_callback.reset(
-        new LoggingCallback(LINE_SEARCH, options.minimizer_progress_to_stdout));
+    logging_callback = std::make_unique<LoggingCallback>(
+        LINE_SEARCH, options.minimizer_progress_to_stdout);
     minimizer_options.callbacks.insert(minimizer_options.callbacks.begin(),
                                        logging_callback.get());
   }
 
   std::unique_ptr<IterationCallback> state_updating_callback;
   if (options.update_state_every_iteration) {
-    state_updating_callback.reset(
-        new GradientProblemSolverStateUpdatingCallback(
-            problem.NumParameters(), solution.data(), parameters_ptr));
+    state_updating_callback =
+        std::make_unique<GradientProblemSolverStateUpdatingCallback>(
+            problem.NumParameters(), solution.data(), parameters_ptr);
     minimizer_options.callbacks.insert(minimizer_options.callbacks.begin(),
                                        state_updating_callback.get());
   }
@@ -163,11 +166,13 @@ void GradientProblemSolver::Solve(const GradientProblemSolver::Options& options,
 
   minimizer->Minimize(minimizer_options, solution.data(), &solver_summary);
 
+  // clang-format off
   summary->termination_type = solver_summary.termination_type;
   summary->message          = solver_summary.message;
   summary->initial_cost     = solver_summary.initial_cost;
   summary->final_cost       = solver_summary.final_cost;
   summary->iterations       = solver_summary.iterations;
+  // clang-format on
   summary->line_search_polynomial_minimization_time_in_seconds =
       solver_summary.line_search_polynomial_minimization_time_in_seconds;
 
@@ -176,102 +181,110 @@ void GradientProblemSolver::Solve(const GradientProblemSolver::Options& options,
     SetSummaryFinalCost(summary);
   }
 
-  const std::map<string, CallStatistics>& evaluator_statistics =
+  const std::map<std::string, CallStatistics>& evaluator_statistics =
       minimizer_options.evaluator->Statistics();
   {
     const CallStatistics& call_stats = FindWithDefault(
         evaluator_statistics, "Evaluator::Residual", CallStatistics());
-    summary->cost_evaluation_time_in_seconds = call_stats.time;
+    summary->cost_evaluation_time_in_seconds =
+        absl::ToDoubleSeconds(call_stats.time);
     summary->num_cost_evaluations = call_stats.calls;
   }
 
   {
     const CallStatistics& call_stats = FindWithDefault(
         evaluator_statistics, "Evaluator::Jacobian", CallStatistics());
-    summary->gradient_evaluation_time_in_seconds = call_stats.time;
+    summary->gradient_evaluation_time_in_seconds =
+        absl::ToDoubleSeconds(call_stats.time);
     summary->num_gradient_evaluations = call_stats.calls;
   }
 
-  summary->total_time_in_seconds = WallTimeInSeconds() - start_time;
+  summary->total_time_in_seconds =
+      absl::ToDoubleSeconds(absl::Now() - start_time);
 }
 
 bool GradientProblemSolver::Summary::IsSolutionUsable() const {
   return internal::IsSolutionUsable(*this);
 }
 
-string GradientProblemSolver::Summary::BriefReport() const {
-  return StringPrintf("Ceres GradientProblemSolver Report: "
-                      "Iterations: %d, "
-                      "Initial cost: %e, "
-                      "Final cost: %e, "
-                      "Termination: %s",
-                      static_cast<int>(iterations.size()),
-                      initial_cost,
-                      final_cost,
-                      TerminationTypeToString(termination_type));
+std::string GradientProblemSolver::Summary::BriefReport() const {
+  return absl::StrFormat(
+      "Ceres GradientProblemSolver Report: "
+      "Iterations: %d, "
+      "Initial cost: %e, "
+      "Final cost: %e, "
+      "Termination: %s",
+      static_cast<int>(iterations.size()),
+      initial_cost,
+      final_cost,
+      TerminationTypeToString(termination_type));
 }
 
-string GradientProblemSolver::Summary::FullReport() const {
-  using internal::VersionString;
+std::string GradientProblemSolver::Summary::FullReport() const {
+  std::string report =
+      absl::StrCat("\nSolver Summary (v ", internal::VersionString(), ")\n\n");
 
-  string report = string("\nSolver Summary (v " + VersionString() + ")\n\n");
-
-  StringAppendF(&report, "Parameters          % 25d\n", num_parameters);
-  if (num_local_parameters != num_parameters) {
-    StringAppendF(&report, "Local parameters    % 25d\n",
-                  num_local_parameters);
+  absl::StrAppendFormat(&report, "Parameters          % 25d\n", num_parameters);
+  if (num_tangent_parameters != num_parameters) {
+    absl::StrAppendFormat(
+        &report, "Tangent parameters   % 25d\n", num_tangent_parameters);
   }
 
-  string line_search_direction_string;
+  std::string line_search_direction_string;
   if (line_search_direction_type == LBFGS) {
-    line_search_direction_string = StringPrintf("LBFGS (%d)", max_lbfgs_rank);
-  } else if (line_search_direction_type == NONLINEAR_CONJUGATE_GRADIENT) {
     line_search_direction_string =
-        NonlinearConjugateGradientTypeToString(
-            nonlinear_conjugate_gradient_type);
+        absl::StrFormat("LBFGS (%d)", max_lbfgs_rank);
+  } else if (line_search_direction_type == NONLINEAR_CONJUGATE_GRADIENT) {
+    line_search_direction_string = NonlinearConjugateGradientTypeToString(
+        nonlinear_conjugate_gradient_type);
   } else {
     line_search_direction_string =
         LineSearchDirectionTypeToString(line_search_direction_type);
   }
 
-  StringAppendF(&report, "Line search direction     %19s\n",
-                line_search_direction_string.c_str());
+  absl::StrAppendFormat(&report,
+                        "Line search direction     %19s\n",
+                        line_search_direction_string);
 
-  const string line_search_type_string =
-      StringPrintf("%s %s",
-                   LineSearchInterpolationTypeToString(
-                       line_search_interpolation_type),
-                   LineSearchTypeToString(line_search_type));
-  StringAppendF(&report, "Line search type          %19s\n",
-                line_search_type_string.c_str());
-  StringAppendF(&report, "\n");
+  const std::string line_search_type_string = absl::StrFormat(
+      "%s %s",
+      LineSearchInterpolationTypeToString(line_search_interpolation_type),
+      LineSearchTypeToString(line_search_type));
+  absl::StrAppendFormat(
+      &report, "Line search type          %19s\n", line_search_type_string);
+  absl::StrAppendFormat(&report, "\n");
 
-  StringAppendF(&report, "\nCost:\n");
-  StringAppendF(&report, "Initial        % 30e\n", initial_cost);
-  if (termination_type != FAILURE &&
-      termination_type != USER_FAILURE) {
-    StringAppendF(&report, "Final          % 30e\n", final_cost);
-    StringAppendF(&report, "Change         % 30e\n",
-                  initial_cost - final_cost);
+  absl::StrAppendFormat(&report, "\nCost:\n");
+  absl::StrAppendFormat(&report, "Initial        % 30e\n", initial_cost);
+  if (termination_type != FAILURE && termination_type != USER_FAILURE) {
+    absl::StrAppendFormat(&report, "Final          % 30e\n", final_cost);
+    absl::StrAppendFormat(
+        &report, "Change         % 30e\n", initial_cost - final_cost);
   }
 
-  StringAppendF(&report, "\nMinimizer iterations         % 16d\n",
-                static_cast<int>(iterations.size()));
+  absl::StrAppendFormat(&report,
+                        "\nMinimizer iterations         % 16d\n",
+                        static_cast<int>(iterations.size()));
 
-  StringAppendF(&report, "\nTime (in seconds):\n");
-  StringAppendF(&report, "\n  Cost evaluation     %23.6f (%d)\n",
-                cost_evaluation_time_in_seconds,
-                num_cost_evaluations);
-  StringAppendF(&report, "  Gradient & cost evaluation %16.6f (%d)\n",
-                gradient_evaluation_time_in_seconds,
-                num_gradient_evaluations);
-  StringAppendF(&report, "  Polynomial minimization   %17.6f\n",
-                line_search_polynomial_minimization_time_in_seconds);
-  StringAppendF(&report, "Total               %25.6f\n\n",
-                total_time_in_seconds);
+  absl::StrAppendFormat(&report, "\nTime (in seconds):\n");
+  absl::StrAppendFormat(&report,
+                        "\n  Cost evaluation     %23.6f (%d)\n",
+                        cost_evaluation_time_in_seconds,
+                        num_cost_evaluations);
+  absl::StrAppendFormat(&report,
+                        "  Gradient & cost evaluation %16.6f (%d)\n",
+                        gradient_evaluation_time_in_seconds,
+                        num_gradient_evaluations);
+  absl::StrAppendFormat(&report,
+                        "  Polynomial minimization   %17.6f\n",
+                        line_search_polynomial_minimization_time_in_seconds);
+  absl::StrAppendFormat(
+      &report, "Total               %25.6f\n\n", total_time_in_seconds);
 
-  StringAppendF(&report, "Termination:        %25s (%s)\n",
-                TerminationTypeToString(termination_type), message.c_str());
+  absl::StrAppendFormat(&report,
+                        "Termination:        %25s (%s)\n",
+                        TerminationTypeToString(termination_type),
+                        message);
   return report;
 }
 

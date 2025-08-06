@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2017 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -28,40 +28,37 @@
 //
 // Author: sameeragarwal@google.com (Sameer Agarwal)
 
-#include <cmath>
-#include <cstdlib>
+#include <limits>
+#include <memory>
 
 #include "ceres/ceres.h"
-#include "glog/logging.h"
 #include "gtest/gtest.h"
 
-namespace ceres {
-namespace internal {
+namespace ceres::internal {
 
 class QuadraticFirstOrderFunction : public ceres::FirstOrderFunction {
  public:
-  virtual bool Evaluate(const double* parameters,
-                        double* cost,
-                        double* gradient) const {
-
+  bool Evaluate(const double* parameters,
+                double* cost,
+                double* gradient) const final {
     cost[0] = parameters[0] * parameters[0];
-    if (gradient != NULL) {
+    if (gradient != nullptr) {
       gradient[0] = 2.0 * parameters[0];
     }
     return true;
   }
 
-  virtual int NumParameters() const { return 1; }
+  int NumParameters() const final { return 1; }
 };
 
 TEST(LineSearchMinimizerTest, FinalCostIsZero) {
   double parameters[1] = {2.0};
-  ceres::GradientProblem problem(new QuadraticFirstOrderFunction);
+  ceres::GradientProblem problem(
+      std::make_unique<QuadraticFirstOrderFunction>());
   ceres::GradientProblemSolver::Options options;
   ceres::GradientProblemSolver::Summary summary;
   ceres::Solve(options, problem, parameters, &summary);
   EXPECT_NEAR(summary.final_cost, 0.0, std::numeric_limits<double>::epsilon());
 }
 
-}  // namespace internal
-}  // namespace ceres
+}  // namespace ceres::internal

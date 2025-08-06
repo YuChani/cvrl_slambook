@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -30,29 +30,29 @@
 
 #include "ceres/single_linkage_clustering.h"
 
-#include <unordered_set>
-#include <unordered_map>
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "ceres/graph.h"
 #include "ceres/graph_algorithms.h"
 
-namespace ceres {
-namespace internal {
+namespace ceres::internal {
 
 int ComputeSingleLinkageClustering(
     const SingleLinkageClusteringOptions& options,
     const WeightedGraph<int>& graph,
-    std::unordered_map<int, int>* membership) {
+    absl::flat_hash_map<int, int>* membership) {
   CHECK(membership != nullptr);
   membership->clear();
 
   // Initially each vertex is in its own cluster.
-  const std::unordered_set<int>& vertices = graph.vertices();
+  const absl::flat_hash_set<int>& vertices = graph.vertices();
   for (const int v : vertices) {
     (*membership)[v] = v;
   }
 
   for (const int vertex1 : vertices) {
-    const std::unordered_set<int>& neighbors = graph.Neighbors(vertex1);
+    const absl::flat_hash_set<int>& neighbors = graph.Neighbors(vertex1);
     for (const int vertex2 : neighbors) {
       // Since the graph is undirected, only pay attention to one side
       // of the edge and ignore weak edges.
@@ -90,5 +90,4 @@ int ComputeSingleLinkageClustering(
   return num_clusters;
 }
 
-}  // namespace internal
-}  // namespace ceres
+}  // namespace ceres::internal

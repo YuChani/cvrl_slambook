@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2016 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -32,7 +32,11 @@
 #define CERES_INTERNAL_TRUST_REGION_MINIMIZER_H_
 
 #include <memory>
+
+#include "absl/time/time.h"
+#include "ceres/internal/disable_warnings.h"
 #include "ceres/internal/eigen.h"
+#include "ceres/internal/export.h"
 #include "ceres/minimizer.h"
 #include "ceres/solver.h"
 #include "ceres/sparse_matrix.h"
@@ -40,20 +44,17 @@
 #include "ceres/trust_region_strategy.h"
 #include "ceres/types.h"
 
-namespace ceres {
-namespace internal {
+namespace ceres::internal {
 
 // Generic trust region minimization algorithm.
 //
 // For example usage, see SolverImpl::Minimize.
-class TrustRegionMinimizer : public Minimizer {
+class CERES_NO_EXPORT TrustRegionMinimizer final : public Minimizer {
  public:
-  ~TrustRegionMinimizer();
-
   // This method is not thread safe.
-  virtual void Minimize(const Minimizer::Options& options,
-                        double* parameters,
-                        Solver::Summary* solver_summary);
+  void Minimize(const Minimizer::Options& options,
+                double* parameters,
+                Solver::Summary* solver_summary) override;
 
  private:
   void Init(const Minimizer::Options& options,
@@ -80,7 +81,6 @@ class TrustRegionMinimizer : public Minimizer {
   bool MinTrustRegionRadiusReached();
 
   bool IsStepSuccessful();
-  void HandleUnsuccessfulStep();
   bool HandleSuccessfulStep();
   bool HandleInvalidStep();
 
@@ -139,8 +139,6 @@ class TrustRegionMinimizer : public Minimizer {
   // Scaling vector to scale the columns of the Jacobian.
   Vector jacobian_scaling_;
 
-  // Euclidean norm of x_.
-  double x_norm_;
   // Cost at x_.
   double x_cost_;
   // Minimum cost encountered up till now.
@@ -152,15 +150,16 @@ class TrustRegionMinimizer : public Minimizer {
   double candidate_cost_;
 
   // Time at which the minimizer was started.
-  double start_time_in_secs_;
+  absl::Time start_time_;
   // Time at which the current iteration was started.
-  double iteration_start_time_in_secs_;
+  absl::Time iteration_start_time_;
   // Number of consecutive steps where the minimizer loop computed a
   // numerically invalid step.
   int num_consecutive_invalid_steps_;
 };
 
-}  // namespace internal
-}  // namespace ceres
+}  // namespace ceres::internal
+
+#include "ceres/internal/reenable_warnings.h"
 
 #endif  // CERES_INTERNAL_TRUST_REGION_MINIMIZER_H_

@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2017 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,9 @@
 // Author: sameeragarwal@google.com (Sameer Agarwal)
 
 #include <memory>
+
+#include "Eigen/Cholesky"
+#include "absl/log/check.h"
 #include "ceres/block_sparse_matrix.h"
 #include "ceres/casts.h"
 #include "ceres/context_impl.h"
@@ -36,13 +39,9 @@
 #include "ceres/linear_solver.h"
 #include "ceres/triplet_sparse_matrix.h"
 #include "ceres/types.h"
-#include "glog/logging.h"
 #include "gtest/gtest.h"
 
-#include "Eigen/Cholesky"
-
-namespace ceres {
-namespace internal {
+namespace ceres::internal {
 
 // TODO(sameeragarwal): These tests needs to be re-written, since
 // SparseNormalCholeskySolver is a composition of two classes now,
@@ -53,21 +52,21 @@ namespace internal {
 // classes.
 class SparseNormalCholeskySolverTest : public ::testing::Test {
  protected:
-  virtual void SetUp() {
-    std::unique_ptr<LinearLeastSquaresProblem> problem(
-        CreateLinearLeastSquaresProblemFromId(2));
+  void SetUp() final {
+    std::unique_ptr<LinearLeastSquaresProblem> problem =
+        CreateLinearLeastSquaresProblemFromId(2);
 
-    CHECK(problem != nullptr);
+    ASSERT_TRUE(problem != nullptr);
     A_.reset(down_cast<BlockSparseMatrix*>(problem->A.release()));
-    b_.reset(problem->b.release());
-    D_.reset(problem->D.release());
+    b_ = std::move(problem->b);
+    D_ = std::move(problem->D);
   }
 
   void TestSolver(const LinearSolver::Options& options, double* D) {
     Matrix dense_A;
     A_->ToDenseMatrix(&dense_A);
     Matrix lhs = dense_A.transpose() * dense_A;
-    if (D != NULL) {
+    if (D != nullptr) {
       lhs += (ConstVectorRef(D, A_->num_cols()).array() *
               ConstVectorRef(D, A_->num_cols()).array())
                  .matrix()
@@ -76,7 +75,7 @@ class SparseNormalCholeskySolverTest : public ::testing::Test {
 
     Vector rhs(A_->num_cols());
     rhs.setZero();
-    A_->LeftMultiply(b_.get(), rhs.data());
+    A_->LeftMultiplyAndAccumulate(b_.get(), rhs.data());
     Vector expected_solution = lhs.llt().solve(rhs);
 
     std::unique_ptr<LinearSolver> solver(LinearSolver::Create(options));
@@ -87,17 +86,18 @@ class SparseNormalCholeskySolverTest : public ::testing::Test {
     summary = solver->Solve(
         A_.get(), b_.get(), per_solve_options, actual_solution.data());
 
-    EXPECT_EQ(summary.termination_type, LINEAR_SOLVER_SUCCESS);
+    EXPECT_EQ(summary.termination_type, LinearSolverTerminationType::SUCCESS);
 
+    const double eps = options.use_mixed_precision_solves ? 2e-6 : 1e-8;
     for (int i = 0; i < A_->num_cols(); ++i) {
-      EXPECT_NEAR(expected_solution(i), actual_solution(i), 1e-8)
+      EXPECT_NEAR(expected_solution(i), actual_solution(i), eps)
           << "\nExpected: " << expected_solution.transpose()
           << "\nActual: " << actual_solution.transpose();
     }
   }
 
   void TestSolver(const LinearSolver::Options& options) {
-    TestSolver(options, NULL);
+    TestSolver(options, nullptr);
     TestSolver(options, D_.get());
   }
 
@@ -112,7 +112,7 @@ TEST_F(SparseNormalCholeskySolverTest,
   LinearSolver::Options options;
   options.sparse_linear_algebra_library_type = SUITE_SPARSE;
   options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = false;
+  options.ordering_type = OrderingType::NATURAL;
   ContextImpl context;
   options.context = &context;
   TestSolver(options);
@@ -123,31 +123,7 @@ TEST_F(SparseNormalCholeskySolverTest,
   LinearSolver::Options options;
   options.sparse_linear_algebra_library_type = SUITE_SPARSE;
   options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = true;
-  ContextImpl context;
-  options.context = &context;
-  TestSolver(options);
-}
-#endif
-
-#ifndef CERES_NO_CXSPARSE
-TEST_F(SparseNormalCholeskySolverTest,
-       SparseNormalCholeskyUsingCXSparsePreOrdering) {
-  LinearSolver::Options options;
-  options.sparse_linear_algebra_library_type = CX_SPARSE;
-  options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = false;
-  ContextImpl context;
-  options.context = &context;
-  TestSolver(options);
-}
-
-TEST_F(SparseNormalCholeskySolverTest,
-       SparseNormalCholeskyUsingCXSparsePostOrdering) {
-  LinearSolver::Options options;
-  options.sparse_linear_algebra_library_type = CX_SPARSE;
-  options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = true;
+  options.ordering_type = OrderingType::AMD;
   ContextImpl context;
   options.context = &context;
   TestSolver(options);
@@ -160,7 +136,7 @@ TEST_F(SparseNormalCholeskySolverTest,
   LinearSolver::Options options;
   options.sparse_linear_algebra_library_type = ACCELERATE_SPARSE;
   options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = false;
+  options.ordering_type = OrderingType::NATURAL;
   ContextImpl context;
   options.context = &context;
   TestSolver(options);
@@ -171,7 +147,7 @@ TEST_F(SparseNormalCholeskySolverTest,
   LinearSolver::Options options;
   options.sparse_linear_algebra_library_type = ACCELERATE_SPARSE;
   options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = true;
+  options.ordering_type = OrderingType::AMD;
   ContextImpl context;
   options.context = &context;
   TestSolver(options);
@@ -184,7 +160,7 @@ TEST_F(SparseNormalCholeskySolverTest,
   LinearSolver::Options options;
   options.sparse_linear_algebra_library_type = EIGEN_SPARSE;
   options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = false;
+  options.ordering_type = OrderingType::NATURAL;
   ContextImpl context;
   options.context = &context;
   TestSolver(options);
@@ -195,12 +171,38 @@ TEST_F(SparseNormalCholeskySolverTest,
   LinearSolver::Options options;
   options.sparse_linear_algebra_library_type = EIGEN_SPARSE;
   options.type = SPARSE_NORMAL_CHOLESKY;
-  options.use_postordering = true;
+  options.ordering_type = OrderingType::AMD;
   ContextImpl context;
   options.context = &context;
   TestSolver(options);
 }
 #endif  // CERES_USE_EIGEN_SPARSE
 
-}  // namespace internal
-}  // namespace ceres
+#ifndef CERES_NO_CUDSS
+TEST_F(SparseNormalCholeskySolverTest, SparseNormalCholeskyUsingCuDSSSingle) {
+  LinearSolver::Options options;
+  options.sparse_linear_algebra_library_type = CUDA_SPARSE;
+  options.type = SPARSE_NORMAL_CHOLESKY;
+  options.ordering_type = OrderingType::AMD;
+  options.use_mixed_precision_solves = true;
+  ContextImpl context;
+  options.context = &context;
+  std::string error;
+  CHECK(context.InitCuda(&error)) << error;
+  TestSolver(options);
+}
+
+TEST_F(SparseNormalCholeskySolverTest, SparseNormalCholeskyUsingCuDSSDouble) {
+  LinearSolver::Options options;
+  options.sparse_linear_algebra_library_type = CUDA_SPARSE;
+  options.type = SPARSE_NORMAL_CHOLESKY;
+  options.ordering_type = OrderingType::AMD;
+  ContextImpl context;
+  options.context = &context;
+  std::string error;
+  CHECK(context.InitCuda(&error)) << error;
+  TestSolver(options);
+}
+#endif  // CERES_USE_EIGEN_SPARSE
+
+}  // namespace ceres::internal

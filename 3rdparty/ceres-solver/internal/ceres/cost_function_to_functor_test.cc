@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -32,28 +32,31 @@
 
 #include <cstdint>
 #include <memory>
+#include <utility>
+#include <vector>
+
+#include "ceres/autodiff_cost_function.h"
+#include "ceres/cost_function.h"
 #include "ceres/dynamic_autodiff_cost_function.h"
 #include "ceres/dynamic_cost_function_to_functor.h"
-#include "ceres/autodiff_cost_function.h"
+#include "ceres/types.h"
 #include "gtest/gtest.h"
 
-namespace ceres {
-namespace internal {
+namespace ceres::internal {
 
-using std::vector;
 const double kTolerance = 1e-18;
 
-void ExpectCostFunctionsAreEqual(const CostFunction& cost_function,
-                                 const CostFunction& actual_cost_function) {
+static void ExpectCostFunctionsAreEqual(
+    const CostFunction& cost_function,
+    const CostFunction& actual_cost_function) {
   EXPECT_EQ(cost_function.num_residuals(),
             actual_cost_function.num_residuals());
   const int num_residuals = cost_function.num_residuals();
-  const vector<int32_t>& parameter_block_sizes =
+  const std::vector<int32_t>& parameter_block_sizes =
       cost_function.parameter_block_sizes();
-  const vector<int32_t>& actual_parameter_block_sizes =
+  const std::vector<int32_t>& actual_parameter_block_sizes =
       actual_cost_function.parameter_block_sizes();
-  EXPECT_EQ(parameter_block_sizes.size(),
-            actual_parameter_block_sizes.size());
+  EXPECT_EQ(parameter_block_sizes.size(), actual_parameter_block_sizes.size());
 
   int num_parameters = 0;
   for (int i = 0; i < parameter_block_sizes.size(); ++i) {
@@ -67,11 +70,12 @@ void ExpectCostFunctionsAreEqual(const CostFunction& cost_function,
   }
 
   std::unique_ptr<double[]> residuals(new double[num_residuals]);
-  std::unique_ptr<double[]> jacobians(new double[num_parameters * num_residuals]);
+  std::unique_ptr<double[]> jacobians(
+      new double[num_parameters * num_residuals]);
 
   std::unique_ptr<double[]> actual_residuals(new double[num_residuals]);
-  std::unique_ptr<double[]> actual_jacobians
-      (new double[num_parameters * num_residuals]);
+  std::unique_ptr<double[]> actual_jacobians(
+      new double[num_parameters * num_residuals]);
 
   std::unique_ptr<double*[]> parameter_blocks(
       new double*[parameter_block_sizes.size()]);
@@ -89,19 +93,17 @@ void ExpectCostFunctionsAreEqual(const CostFunction& cost_function,
     num_parameters += parameter_block_sizes[i];
   }
 
-  EXPECT_TRUE(cost_function.Evaluate(parameter_blocks.get(),
-                                     residuals.get(), NULL));
-  EXPECT_TRUE(actual_cost_function.Evaluate(parameter_blocks.get(),
-                                            actual_residuals.get(), NULL));
+  EXPECT_TRUE(
+      cost_function.Evaluate(parameter_blocks.get(), residuals.get(), nullptr));
+  EXPECT_TRUE(actual_cost_function.Evaluate(
+      parameter_blocks.get(), actual_residuals.get(), nullptr));
   for (int i = 0; i < num_residuals; ++i) {
     EXPECT_NEAR(residuals[i], actual_residuals[i], kTolerance)
         << "residual id: " << i;
   }
 
-
-  EXPECT_TRUE(cost_function.Evaluate(parameter_blocks.get(),
-                                     residuals.get(),
-                                     jacobian_blocks.get()));
+  EXPECT_TRUE(cost_function.Evaluate(
+      parameter_blocks.get(), residuals.get(), jacobian_blocks.get()));
   EXPECT_TRUE(actual_cost_function.Evaluate(parameter_blocks.get(),
                                             actual_residuals.get(),
                                             actual_jacobian_blocks.get()));
@@ -112,8 +114,8 @@ void ExpectCostFunctionsAreEqual(const CostFunction& cost_function,
 
   for (int i = 0; i < num_residuals * num_parameters; ++i) {
     EXPECT_NEAR(jacobians[i], actual_jacobians[i], kTolerance)
-        << "jacobian : " << i << " "
-        << jacobians[i] << " " << actual_jacobians[i];
+        << "jacobian : " << i << " " << jacobians[i] << " "
+        << actual_jacobians[i];
   }
 }
 
@@ -131,8 +133,8 @@ struct TwoParameterBlockFunctor {
  public:
   template <typename T>
   bool operator()(const T* x1, const T* x2, T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1];
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1];
     return true;
   }
 };
@@ -141,8 +143,8 @@ struct ThreeParameterBlockFunctor {
  public:
   template <typename T>
   bool operator()(const T* x1, const T* x2, const T* x3, T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1];
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1];
     return true;
   }
 };
@@ -150,12 +152,12 @@ struct ThreeParameterBlockFunctor {
 struct FourParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1];
+  bool operator()(
+      const T* x1, const T* x2, const T* x3, const T* x4, T* residuals) const {
+    residuals[0] =
+        x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] + x4[0] * x4[0];
+    residuals[1] =
+        x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] + x4[1] * x4[1];
     return true;
   }
 };
@@ -163,12 +165,16 @@ struct FourParameterBlockFunctor {
 struct FiveParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  const T* x5, T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0] + x5[0] * x5[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1] + x5[1] * x5[1];
+  bool operator()(const T* x1,
+                  const T* x2,
+                  const T* x3,
+                  const T* x4,
+                  const T* x5,
+                  T* residuals) const {
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] +
+                   x4[0] * x4[0] + x5[0] * x5[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] +
+                   x4[1] * x4[1] + x5[1] * x5[1];
     return true;
   }
 };
@@ -176,12 +182,17 @@ struct FiveParameterBlockFunctor {
 struct SixParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  const T* x5, const T* x6,  T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1];
+  bool operator()(const T* x1,
+                  const T* x2,
+                  const T* x3,
+                  const T* x4,
+                  const T* x5,
+                  const T* x6,
+                  T* residuals) const {
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] +
+                   x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] +
+                   x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1];
     return true;
   }
 };
@@ -189,12 +200,20 @@ struct SixParameterBlockFunctor {
 struct SevenParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  const T* x5, const T* x6, const T* x7, T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] + x7[0] * x7[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] + x7[1] * x7[1];
+  bool operator()(const T* x1,
+                  const T* x2,
+                  const T* x3,
+                  const T* x4,
+                  const T* x5,
+                  const T* x6,
+                  const T* x7,
+                  T* residuals) const {
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] +
+                   x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] +
+                   x7[0] * x7[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] +
+                   x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] +
+                   x7[1] * x7[1];
     return true;
   }
 };
@@ -202,15 +221,21 @@ struct SevenParameterBlockFunctor {
 struct EightParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  const T* x5, const T* x6, const T* x7, const T* x8,
+  bool operator()(const T* x1,
+                  const T* x2,
+                  const T* x3,
+                  const T* x4,
+                  const T* x5,
+                  const T* x6,
+                  const T* x7,
+                  const T* x8,
                   T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] + x7[0] * x7[0]
-        + x8[0] * x8[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] + x7[1] * x7[1]
-        + x8[1] * x8[1];
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] +
+                   x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] +
+                   x7[0] * x7[0] + x8[0] * x8[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] +
+                   x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] +
+                   x7[1] * x7[1] + x8[1] * x8[1];
     return true;
   }
 };
@@ -218,15 +243,22 @@ struct EightParameterBlockFunctor {
 struct NineParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  const T* x5, const T* x6, const T* x7, const T* x8,
-                  const T* x9, T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] + x7[0] * x7[0]
-        + x8[0] * x8[0] + x9[0] * x9[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] + x7[1] * x7[1]
-        + x8[1] * x8[1] + x9[1] * x9[1];
+  bool operator()(const T* x1,
+                  const T* x2,
+                  const T* x3,
+                  const T* x4,
+                  const T* x5,
+                  const T* x6,
+                  const T* x7,
+                  const T* x8,
+                  const T* x9,
+                  T* residuals) const {
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] +
+                   x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] +
+                   x7[0] * x7[0] + x8[0] * x8[0] + x9[0] * x9[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] +
+                   x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] +
+                   x7[1] * x7[1] + x8[1] * x8[1] + x9[1] * x9[1];
     return true;
   }
 };
@@ -234,15 +266,25 @@ struct NineParameterBlockFunctor {
 struct TenParameterBlockFunctor {
  public:
   template <typename T>
-  bool operator()(const T* x1, const T* x2, const T* x3, const T* x4,
-                  const T* x5, const T* x6, const T* x7, const T* x8,
-                  const T* x9, const T* x10, T* residuals) const {
-    residuals[0] = x1[0] * x1[0]  + x2[0] * x2[0] + x3[0] * x3[0]
-        + x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] + x7[0] * x7[0]
-        + x8[0] * x8[0] + x9[0] * x9[0] + x10[0] * x10[0];
-    residuals[1] = x1[1] * x1[1]  + x2[1] * x2[1] + x3[1] * x3[1]
-        + x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] + x7[1] * x7[1]
-        + x8[1] * x8[1] + x9[1] * x9[1] + x10[1] * x10[1];
+  bool operator()(const T* x1,
+                  const T* x2,
+                  const T* x3,
+                  const T* x4,
+                  const T* x5,
+                  const T* x6,
+                  const T* x7,
+                  const T* x8,
+                  const T* x9,
+                  const T* x10,
+                  T* residuals) const {
+    residuals[0] = x1[0] * x1[0] + x2[0] * x2[0] + x3[0] * x3[0] +
+                   x4[0] * x4[0] + x5[0] * x5[0] + x6[0] * x6[0] +
+                   x7[0] * x7[0] + x8[0] * x8[0] + x9[0] * x9[0] +
+                   x10[0] * x10[0];
+    residuals[1] = x1[1] * x1[1] + x2[1] * x2[1] + x3[1] * x3[1] +
+                   x4[1] * x4[1] + x5[1] * x5[1] + x6[1] * x6[1] +
+                   x7[1] * x7[1] + x8[1] * x8[1] + x9[1] * x9[1] +
+                   x10[1] * x10[1];
     return true;
   }
 };
@@ -259,82 +301,84 @@ class DynamicTwoParameterBlockFunctor {
   }
 };
 
-#define TEST_BODY(NAME)                                                 \
-  TEST(CostFunctionToFunctor, NAME) {                                   \
-    std::unique_ptr<CostFunction> cost_function(                             \
-        new AutoDiffCostFunction<                                       \
-            CostFunctionToFunctor<2, PARAMETER_BLOCK_SIZES >,           \
-                2, PARAMETER_BLOCK_SIZES>(new CostFunctionToFunctor<    \
-                    2, PARAMETER_BLOCK_SIZES >(                         \
-                        new AutoDiffCostFunction<                       \
-                            NAME##Functor, 2, PARAMETER_BLOCK_SIZES >(  \
-                  new NAME##Functor))));                                \
-                                                                        \
-std::unique_ptr<CostFunction> actual_cost_function(                          \
-    new AutoDiffCostFunction<NAME##Functor, 2, PARAMETER_BLOCK_SIZES >( \
-        new NAME##Functor));                                            \
-ExpectCostFunctionsAreEqual(*cost_function, *actual_cost_function);     \
-}
+// Check that AutoDiff(Functor1) == AutoDiff(CostToFunctor(AutoDiff(Functor1)))
+#define TEST_BODY(Functor1)                                                    \
+  TEST(CostFunctionToFunctor, Functor1) {                                      \
+    using CostFunction1 =                                                      \
+        AutoDiffCostFunction<Functor1, 2, PARAMETER_BLOCK_SIZES>;              \
+    using FunctionToFunctor = CostFunctionToFunctor<2, PARAMETER_BLOCK_SIZES>; \
+    using CostFunction2 =                                                      \
+        AutoDiffCostFunction<FunctionToFunctor, 2, PARAMETER_BLOCK_SIZES>;     \
+                                                                               \
+    std::unique_ptr<CostFunction> cost_function(new CostFunction2(             \
+        new FunctionToFunctor(new CostFunction1(new Functor1))));              \
+                                                                               \
+    std::unique_ptr<CostFunction> actual_cost_function(                        \
+        new CostFunction1(new Functor1));                                      \
+    ExpectCostFunctionsAreEqual(*cost_function, *actual_cost_function);        \
+  }
 
 #define PARAMETER_BLOCK_SIZES 2
-TEST_BODY(OneParameterBlock)
+TEST_BODY(OneParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2
-TEST_BODY(TwoParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2
+TEST_BODY(TwoParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2
-TEST_BODY(ThreeParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2
+TEST_BODY(ThreeParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2
-TEST_BODY(FourParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2
+TEST_BODY(FourParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2,2
-TEST_BODY(FiveParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2, 2
+TEST_BODY(FiveParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2,2,2
-TEST_BODY(SixParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2, 2, 2
+TEST_BODY(SixParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2,2,2,2
-TEST_BODY(SevenParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2, 2, 2, 2
+TEST_BODY(SevenParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2,2,2,2,2
-TEST_BODY(EightParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2, 2, 2, 2, 2
+TEST_BODY(EightParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2,2,2,2,2,2
-TEST_BODY(NineParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2, 2, 2, 2, 2, 2
+TEST_BODY(NineParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
-#define PARAMETER_BLOCK_SIZES 2,2,2,2,2,2,2,2,2,2
-TEST_BODY(TenParameterBlock)
+#define PARAMETER_BLOCK_SIZES 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+TEST_BODY(TenParameterBlockFunctor)
 #undef PARAMETER_BLOCK_SIZES
 
 #undef TEST_BODY
 
 TEST(CostFunctionToFunctor, DynamicNumberOfResiduals) {
   std::unique_ptr<CostFunction> cost_function(
-      new AutoDiffCostFunction<
-      CostFunctionToFunctor<ceres::DYNAMIC, 2, 2 >, ceres::DYNAMIC, 2, 2>(
-          new CostFunctionToFunctor<ceres::DYNAMIC, 2, 2 >(
-              new AutoDiffCostFunction<TwoParameterBlockFunctor, 2, 2, 2 >(
-                  new TwoParameterBlockFunctor)), 2));
+      new AutoDiffCostFunction<CostFunctionToFunctor<ceres::DYNAMIC, 2, 2>,
+                               ceres::DYNAMIC,
+                               2,
+                               2>(
+          new CostFunctionToFunctor<ceres::DYNAMIC, 2, 2>(
+              new AutoDiffCostFunction<TwoParameterBlockFunctor, 2, 2, 2>(
+                  new TwoParameterBlockFunctor)),
+          2));
 
   std::unique_ptr<CostFunction> actual_cost_function(
-      new AutoDiffCostFunction<TwoParameterBlockFunctor, 2, 2, 2 >(
+      new AutoDiffCostFunction<TwoParameterBlockFunctor, 2, 2, 2>(
           new TwoParameterBlockFunctor));
   ExpectCostFunctionsAreEqual(*cost_function, *actual_cost_function);
 }
 
 TEST(CostFunctionToFunctor, DynamicCostFunctionToFunctor) {
-  DynamicAutoDiffCostFunction<DynamicTwoParameterBlockFunctor>*
-      actual_cost_function(
+  auto* actual_cost_function(
       new DynamicAutoDiffCostFunction<DynamicTwoParameterBlockFunctor>(
           new DynamicTwoParameterBlockFunctor));
   actual_cost_function->AddParameterBlock(2);
@@ -350,5 +394,39 @@ TEST(CostFunctionToFunctor, DynamicCostFunctionToFunctor) {
   ExpectCostFunctionsAreEqual(cost_function, *actual_cost_function);
 }
 
-}  // namespace internal
-}  // namespace ceres
+TEST(CostFunctionToFunctor, UniquePtrArgumentForwarding) {
+  auto cost_function = std::make_unique<
+      AutoDiffCostFunction<CostFunctionToFunctor<ceres::DYNAMIC, 2, 2>,
+                           ceres::DYNAMIC,
+                           2,
+                           2>>(
+      std::make_unique<CostFunctionToFunctor<ceres::DYNAMIC, 2, 2>>(
+          std::make_unique<
+              AutoDiffCostFunction<TwoParameterBlockFunctor, 2, 2, 2>>()),
+      2);
+
+  auto actual_cost_function = std::make_unique<
+      AutoDiffCostFunction<TwoParameterBlockFunctor, 2, 2, 2>>();
+  ExpectCostFunctionsAreEqual(*cost_function, *actual_cost_function);
+}
+
+TEST(CostFunctionToFunctor, DynamicCostFunctionToFunctorUniquePtr) {
+  auto actual_cost_function = std::make_unique<
+      DynamicAutoDiffCostFunction<DynamicTwoParameterBlockFunctor>>();
+  actual_cost_function->AddParameterBlock(2);
+  actual_cost_function->AddParameterBlock(2);
+  actual_cost_function->SetNumResiduals(2);
+
+  // Use deduction guides for a more compact variable definition
+  DynamicAutoDiffCostFunction cost_function(
+      std::make_unique<DynamicCostFunctionToFunctor>(
+          std::move(actual_cost_function)));
+  cost_function.AddParameterBlock(2);
+  cost_function.AddParameterBlock(2);
+  cost_function.SetNumResiduals(2);
+
+  ExpectCostFunctionsAreEqual(cost_function,
+                              *cost_function.functor().function());
+}
+
+}  // namespace ceres::internal

@@ -1,5 +1,5 @@
 # Ceres Solver - A fast non-linear least squares minimizer
-# Copyright 2016 Google Inc. All rights reserved.
+# Copyright 2023 Google Inc. All rights reserved.
 # http://ceres-solver.org/
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,5 @@
 #
 # Author: vitus@google.com (Michael Vitus)
 
-if (GFLAGS)
-  add_executable(pose_graph_3d pose_graph_3d.cc)
-  target_link_libraries(pose_graph_3d ceres ${GFLAGS_LIBRARIES})
-endif (GFLAGS)
+add_executable(pose_graph_3d pose_graph_3d.cc)
+target_link_libraries(pose_graph_3d PRIVATE absl::flags absl::flags_parse absl::log absl::check absl::log_initialize Ceres::ceres)

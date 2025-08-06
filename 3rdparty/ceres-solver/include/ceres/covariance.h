@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2023 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -34,8 +34,10 @@
 #include <memory>
 #include <utility>
 #include <vector>
+
+#include "ceres/internal/config.h"
 #include "ceres/internal/disable_warnings.h"
-#include "ceres/internal/port.h"
+#include "ceres/internal/export.h"
 #include "ceres/types.h"
 
 namespace ceres {
@@ -50,7 +52,7 @@ class CovarianceImpl;
 // =======
 // It is very easy to use this class incorrectly without understanding
 // the underlying mathematics. Please read and understand the
-// documentation completely before attempting to use this class.
+// documentation completely before attempting to use it.
 //
 //
 // This class allows the user to evaluate the covariance for a
@@ -72,7 +74,7 @@ class CovarianceImpl;
 // the maximum likelihood estimate of x given observations y is the
 // solution to the non-linear least squares problem:
 //
-//  x* = arg min_x |f(x)|^2
+//  x* = arg min_x |f(x) - y|^2
 //
 // And the covariance of x* is given by
 //
@@ -144,7 +146,7 @@ class CovarianceImpl;
 //   a. The rank deficiency arises from overparameterization. e.g., a
 //   four dimensional quaternion used to parameterize SO(3), which is
 //   a three dimensional manifold. In cases like this, the user should
-//   use an appropriate LocalParameterization. Not only will this lead
+//   use an appropriate Manifold. Not only will this lead
 //   to better numerical behaviour of the Solver, it will also expose
 //   the rank deficiency to the Covariance object so that it can
 //   handle it correctly.
@@ -219,11 +221,11 @@ class CERES_EXPORT Covariance {
     // 1. DENSE_SVD uses Eigen's JacobiSVD to perform the
     //    computations. It computes the singular value decomposition
     //
-    //      U * S * V' = J
+    //      U * D * V' = J
     //
     //    and then uses it to compute the pseudo inverse of J'J as
     //
-    //      pseudoinverse[J'J]^ = V * pseudoinverse[S] * V'
+    //      pseudoinverse[J'J] = V * pseudoinverse[D^2] * V'
     //
     //    It is an accurate but slow method and should only be used
     //    for small to moderate sized problems. It can handle
@@ -234,7 +236,7 @@ class CERES_EXPORT Covariance {
     //
     //      Q * R = J
     //
-    //    [J'J]^-1 = [R*R']^-1
+    //    [J'J]^-1 = [R'*R]^-1
     //
     // SPARSE_QR is not capable of computing the covariance if the
     // Jacobian is rank deficient. Depending on the value of
@@ -243,6 +245,20 @@ class CERES_EXPORT Covariance {
     // SuiteSparse's high performance SuiteSparseQR algorithm will be
     // used.
     CovarianceAlgorithmType algorithm_type = SPARSE_QR;
+
+    // During QR factorization, if a column with Euclidean norm less
+    // than column_pivot_threshold is encountered it is treated as
+    // zero.
+    //
+    // If column_pivot_threshold < 0, then an automatic default value
+    // of 20*(m+n)*eps*sqrt(max(diag(J’*J))) is used. Here m and n are
+    // the number of rows and columns of the Jacobian (J)
+    // respectively.
+    //
+    // This is an advanced option meant for users who know enough
+    // about their Jacobian matrices that they can determine a value
+    // better than the default.
+    double column_pivot_threshold = -1;
 
     // If the Jacobian matrix is near singular, then inverting J'J
     // will result in unreliable results, e.g, if
@@ -264,7 +280,7 @@ class CERES_EXPORT Covariance {
     //
     //      min_sigma / max_sigma < sqrt(min_reciprocal_condition_number)
     //
-    //    where min_sigma and max_sigma are the minimum and maxiumum
+    //    where min_sigma and max_sigma are the minimum and maximum
     //    singular values of J respectively.
     //
     // 2. SPARSE_QR
@@ -349,10 +365,9 @@ class CERES_EXPORT Covariance {
   // covariance computation. Please see the documentation for
   // Covariance::Options for more on the conditions under which this
   // function returns false.
-  bool Compute(
-      const std::vector<std::pair<const double*,
-                                  const double*>>& covariance_blocks,
-      Problem* problem);
+  bool Compute(const std::vector<std::pair<const double*, const double*>>&
+                   covariance_blocks,
+               Problem* problem);
 
   // Compute a part of the covariance matrix.
   //
@@ -393,11 +408,9 @@ class CERES_EXPORT Covariance {
                           const double* parameter_block2,
                           double* covariance_block) const;
 
-  // Return the block of the cross-covariance matrix corresponding to
-  // parameter_block1 and parameter_block2.
-  // Returns cross-covariance in the tangent space if a local
-  // parameterization is associated with either parameter block;
-  // else returns cross-covariance in the ambient space.
+  // Returns the block of the cross-covariance in the tangent space if a
+  // manifold is associated with either parameter block; else returns
+  // cross-covariance in the ambient space.
   //
   // Compute must be called before the first call to
   // GetCovarianceBlock and the pair <parameter_block1,
@@ -425,13 +438,12 @@ class CERES_EXPORT Covariance {
   // a square matrix whose row and column count is equal to the sum of
   // the sizes of the individual parameter blocks. The covariance
   // matrix will be a row-major matrix.
-  bool GetCovarianceMatrix(const std::vector<const double *> &parameter_blocks,
-                           double *covariance_matrix);
+  bool GetCovarianceMatrix(const std::vector<const double*>& parameter_blocks,
+                           double* covariance_matrix) const;
 
   // Return the covariance matrix corresponding to parameter_blocks
-  // in the tangent space if a local parameterization is associated
-  // with one of the parameter blocks else returns the covariance
-  // matrix in the ambient space.
+  // in the tangent space if a manifold is associated with one of the parameter
+  // blocks else returns the covariance matrix in the ambient space.
   //
   // Compute must be called before calling GetCovarianceMatrix and all
   // parameter_blocks must have been present in the vector
@@ -445,7 +457,7 @@ class CERES_EXPORT Covariance {
   // blocks. The covariance matrix will be a row-major matrix.
   bool GetCovarianceMatrixInTangentSpace(
       const std::vector<const double*>& parameter_blocks,
-      double* covariance_matrix);
+      double* covariance_matrix) const;
 
  private:
   std::unique_ptr<internal::CovarianceImpl> impl_;

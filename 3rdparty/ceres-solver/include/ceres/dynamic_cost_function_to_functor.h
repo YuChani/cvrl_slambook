@@ -1,5 +1,5 @@
 // Ceres Solver - A fast non-linear least squares minimizer
-// Copyright 2015 Google Inc. All rights reserved.
+// Copyright 2025 Google Inc. All rights reserved.
 // http://ceres-solver.org/
 //
 // Redistribution and use in source and binary forms, with or without
@@ -36,9 +36,11 @@
 #include <numeric>
 #include <vector>
 
+#include "absl/container/fixed_array.h"
+#include "absl/log/check.h"
 #include "ceres/dynamic_cost_function.h"
-#include "ceres/internal/fixed_array.h"
-#include "ceres/internal/port.h"
+#include "ceres/internal/disable_warnings.h"
+#include "ceres/internal/export.h"
 
 namespace ceres {
 
@@ -53,9 +55,9 @@ namespace ceres {
 //  class IntrinsicProjection : public CostFunction {
 //    public:
 //      IntrinsicProjection(const double* observation);
-//      virtual bool Evaluate(double const* const* parameters,
-//                            double* residuals,
-//                            double** jacobians) const;
+//      bool Evaluate(double const* const* parameters,
+//                    double* residuals,
+//                    double** jacobians) const override;
 //  };
 //
 // is a cost function that implements the projection of a point in its
@@ -100,17 +102,16 @@ namespace ceres {
 //  private:
 //   DynamicCostFunctionToFunctor intrinsic_projection_;
 // };
-class DynamicCostFunctionToFunctor {
+class CERES_EXPORT DynamicCostFunctionToFunctor {
  public:
   // Takes ownership of cost_function.
-  explicit DynamicCostFunctionToFunctor(CostFunction* cost_function)
-      : cost_function_(cost_function) {
-    CHECK(cost_function != nullptr);
-  }
+  explicit DynamicCostFunctionToFunctor(CostFunction* cost_function);
 
-  bool operator()(double const* const* parameters, double* residuals) const {
-    return cost_function_->Evaluate(parameters, residuals, NULL);
-  }
+  // Takes ownership of cost_function.
+  explicit DynamicCostFunctionToFunctor(
+      std::unique_ptr<CostFunction> cost_function);
+
+  bool operator()(double const* const* parameters, double* residuals) const;
 
   template <typename JetT>
   bool operator()(JetT const* const* inputs, JetT* output) const {
@@ -119,19 +120,19 @@ class DynamicCostFunctionToFunctor {
     const int num_parameter_blocks =
         static_cast<int>(parameter_block_sizes.size());
     const int num_residuals = cost_function_->num_residuals();
-    const int num_parameters = std::accumulate(parameter_block_sizes.begin(),
-                                               parameter_block_sizes.end(), 0);
+    const int num_parameters = std::accumulate(
+        parameter_block_sizes.begin(), parameter_block_sizes.end(), 0);
 
-    internal::FixedArray<double> parameters(num_parameters);
-    internal::FixedArray<double*> parameter_blocks(num_parameter_blocks);
-    internal::FixedArray<double> jacobians(num_residuals * num_parameters);
-    internal::FixedArray<double*> jacobian_blocks(num_parameter_blocks);
-    internal::FixedArray<double> residuals(num_residuals);
+    absl::FixedArray<double> parameters(num_parameters);
+    absl::FixedArray<double*> parameter_blocks(num_parameter_blocks);
+    absl::FixedArray<double> jacobians(num_residuals * num_parameters);
+    absl::FixedArray<double*> jacobian_blocks(num_parameter_blocks);
+    absl::FixedArray<double> residuals(num_residuals);
 
     // Build a set of arrays to get the residuals and jacobians from
     // the CostFunction wrapped by this functor.
-    double* parameter_ptr = parameters.get();
-    double* jacobian_ptr = jacobians.get();
+    double* parameter_ptr = parameters.data();
+    double* jacobian_ptr = jacobians.data();
     for (int i = 0; i < num_parameter_blocks; ++i) {
       parameter_blocks[i] = parameter_ptr;
       jacobian_blocks[i] = jacobian_ptr;
@@ -141,9 +142,9 @@ class DynamicCostFunctionToFunctor {
       jacobian_ptr += num_residuals * parameter_block_sizes[i];
     }
 
-    if (!cost_function_->Evaluate(parameter_blocks.get(),
-                                  residuals.get(),
-                                  jacobian_blocks.get())) {
+    if (!cost_function_->Evaluate(parameter_blocks.data(),
+                                  residuals.data(),
+                                  jacobian_blocks.data())) {
       return false;
     }
 
@@ -181,10 +182,14 @@ class DynamicCostFunctionToFunctor {
     return true;
   }
 
+  CostFunction* function() const noexcept { return cost_function_.get(); }
+
  private:
   std::unique_ptr<CostFunction> cost_function_;
 };
 
 }  // namespace ceres
+
+#include "ceres/internal/reenable_warnings.h"
 
 #endif  // CERES_PUBLIC_DYNAMIC_COST_FUNCTION_TO_FUNCTOR_H_
