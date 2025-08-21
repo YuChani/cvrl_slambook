@@ -28,3 +28,5 @@ include_directories(${g2o_INCLUDE_DIRS})
 find_package(Sophus REQUIRED)
 
 add_executable(orb_cv orb_cv.cpp)
+target_link_libraries(orb_cv ${OpenCV_LIBS})
+
